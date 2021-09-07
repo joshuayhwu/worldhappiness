@@ -1,0 +1,393 @@
+---
+title: "WorldHappinessAnaysis"
+author: "Yi Heng Joshua Wu"
+date: "5/6/2021"
+output: md_document
+---
+
+In Economics, there is a theory called “Easterlin Paradox”. Where the country’s GDP growth doesn’t improve happiness in the long-run.
+
+To test this theory, my goal was to use the same data the World Happiness Report uses from 2015 - 2019, originated from GallUp Polls, to generate a model to find significant factors contributing to a country’s happiness index.
+
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+knitr::opts_knit$set("C:\\Users\\Joshua Wu\\Documents\\R\\R Work\\WorldHappiness")
+```
+
+## Loading libraries
+```{r}
+library(dplyr)
+library(corrplot)
+library(ggplot2)
+library(ggpubr)
+library(aod)
+library(MASS)
+library(stargazer)
+```
+
+
+
+## Loading World Happiness Data from 2015 - 2019
+```{r}
+whr.raw.2015 = read.csv("2015.csv")
+whr.raw.2016 = read.csv("2016.csv")
+whr.raw.2017 = read.csv("2017.csv")
+whr.raw.2018 = read.csv("2018.csv")
+whr.raw.2019 = read.csv("2019.csv")
+```
+
+First check if the dimensions of the data sets match
+
+```{r}
+# Checking Dimensions
+paste("WHR 2015 Data has", dim(whr.raw.2015)[1], "rows and", dim(whr.raw.2015)[2], "columns", sep=" ")
+paste("WHR 2016 Data has", dim(whr.raw.2016)[1], "rows and", dim(whr.raw.2016)[2], "columns", sep=" ")
+paste("WHR 2017 Data has", dim(whr.raw.2017)[1], "rows and", dim(whr.raw.2017)[2], "columns", sep=" ")
+paste("WHR 2018 Data has", dim(whr.raw.2018)[1], "rows and", dim(whr.raw.2018)[2], "columns", sep=" ")
+paste("WHR 2019 Data has", dim(whr.raw.2019)[1], "rows and", dim(whr.raw.2019)[2], "columns", sep=" ")
+```
+It appears some of the countries are not reported in the subsequent reports. Furthermore, columns like happiness rank, standard error and dystopian residual is missing from subsequent years of report.
+
+Lets check for potential missing values in the data set as well.
+
+```{r}
+# Checking Missing Values
+sapply(whr.raw.2015, function(x) sum(is.na(x)))
+sapply(whr.raw.2016, function(x) sum(is.na(x)))
+sapply(whr.raw.2017, function(x) sum(is.na(x)))
+sapply(whr.raw.2018, function(x) sum(is.na(x)))
+sapply(whr.raw.2019, function(x) sum(is.na(x)))
+
+```
+It seems like there aren't any missing values across all 5 data sets
+
+## Data Cleaning
+
+First drop the columns that are only present in some iterations of whr
+```{r}
+# Dropping columns that are not present across all data sets
+whr.raw.2015 = subset(whr.raw.2015, select = -c(Dystopia.Residual, Standard.Error))
+whr.raw.2016 = subset(whr.raw.2016, select = -c(Lower.Confidence.Interval, 
+                                                Upper.Confidence.Interval,
+                                                Dystopia.Residual))
+whr.raw.2017 = subset(whr.raw.2017, select = -c(Whisker.high, 
+                                                Whisker.low,
+                                                Dystopia.Residual))
+```
+
+Standardizing the columns across all 5 data set
+```{r}
+# Standardized column names to "Country", "Region", "Happiness.Rank", "Happiness.Score", "GDP.per.Capita", "Freedom", "Trust..Government.Corruption", "Generosity", "Health..Life.Expectancy.", "Social Support"
+
+# 2015 Data - Family is rename social support in later data sets
+whr.raw.2015 = whr.raw.2015 %>%
+  rename(
+    GDP.per.Capita = Economy..GDP.per.Capita.,
+    Social.support = Family
+  )
+
+# 2016 Data
+whr.raw.2016 = whr.raw.2016 %>%
+  rename(
+    GDP.per.Capita = Economy..GDP.per.Capita.,
+    Social.support = Family
+  )
+
+# 2017 Data
+whr.raw.2017 = whr.raw.2017 %>%
+  rename(
+    GDP.per.Capita = Economy..GDP.per.Capita.,
+    Social.support = Family
+  )
+
+# 2018 Data
+whr.raw.2018 = whr.raw.2018 %>%
+  rename(
+    Trust..Government.Corruption. = Perceptions.of.corruption,
+    Happiness.Rank = Overall.rank,
+    Happiness.Score = Score,
+    Country = Country.or.region,
+    Freedom = Freedom.to.make.life.choices,
+    Health..Life.Expectancy. = Healthy.life.expectancy,
+    GDP.per.Capita = GDP.per.capita
+  )
+
+# 2019 Data
+whr.raw.2019 = whr.raw.2019 %>%
+  rename(
+    Trust..Government.Corruption. = Perceptions.of.corruption,
+    Happiness.Rank = Overall.rank,
+    Happiness.Score = Score,
+    Country = Country.or.region,
+    Freedom = Freedom.to.make.life.choices,
+    Health..Life.Expectancy. = Healthy.life.expectancy,
+    GDP.per.Capita = GDP.per.capita
+  )
+
+```
+
+Add the Region column back to 2017 to 2019 data and add missing values
+```{r}
+# Join
+regions = whr.raw.2015[,c("Country", "Region")]
+whr.raw.2017 = merge(x=whr.raw.2017, y = regions, by = "Country", all.x=TRUE)
+whr.raw.2018 = merge(x=whr.raw.2018, y = regions, by = "Country", all.x=TRUE)
+whr.raw.2019 = merge(x=whr.raw.2019, y = regions, by = "Country", all.x=TRUE)
+
+# Manually fillling up Region Values - 2017
+whr.raw.2017[14, "Region"] = 'Latin America and Caribbean'
+whr.raw.2017[56, "Region"] = 'Eastern Asia'
+whr.raw.2017[97, "Region"]= 'Sub-Saharan Africa'
+whr.raw.2017[125, "Region"]= 'Sub-Saharan Africa'
+whr.raw.2017[128, "Region"]= 'Sub-Saharan Africa'
+whr.raw.2017[135, "Region"] = 'Eastern Asia'
+
+# Manually filling in data - 2018
+whr.raw.2018[14, "Region"] = 'Latin America and Caribbean'
+whr.raw.2018[98, "Region"] = 'Sub-Saharan Africa'
+whr.raw.2018[105, "Region"]= "Western Europe"
+whr.raw.2018[126, "Region"]= 'Sub-Saharan Africa'
+whr.raw.2018[129, "Region"]= 'Sub-Saharan Africa'
+whr.raw.2018[141, "Region"] = "Latin America and Caribbean"
+
+# Manually filling in data - 2019
+whr.raw.2019[47, "Region"] = 'Sub-Saharan Africa'
+whr.raw.2019[97, "Region"] = 'Sub-Saharan Africa'
+whr.raw.2019[104, "Region"]= "Western Europe"
+whr.raw.2019[105, "Region"]= "Western Europe"
+whr.raw.2019[126, "Region"]= 'Sub-Saharan Africa'
+whr.raw.2019[129, "Region"]= 'Sub-Saharan Africa'
+whr.raw.2019[141, "Region"] = "Latin America and Caribbean"
+
+
+# Impute trust score based on average of UAE Trust score in other years
+whr.raw.2018[147, "Trust..Government.Corruption."] = "0.31"
+```
+
+Concatenate the data frames
+```{r}
+whr.raw.2015["Year"] = 2015
+whr.raw.2016["Year"] = 2016
+whr.raw.2017["Year"] = 2017
+whr.raw.2018["Year"] = 2018
+whr.raw.2019["Year"] = 2019
+
+whr.all = rbind(whr.raw.2015, whr.raw.2016, whr.raw.2017, whr.raw.2018, whr.raw.2019)
+whr.all$Trust..Government.Corruption. = as.numeric(whr.all$Trust..Government.Corruption.)
+head(whr.all)
+```
+
+After we are done with the combined dataset, we can work on some visualizations!
+
+## Exploratory Data Analysis
+
+
+## Spearman Rank Correlation
+
+Since the rank is an ordinal variable, we need to use Spearman's rank correlation
+the explore the crucial variables for our model. We will focus on 2015.
+```{r}
+cor.test(x=whr.raw.2015$GDP.per.Capita, y=whr.raw.2015$Happiness.Rank, method = 'spearman')
+cor.test(x=whr.raw.2015$Social.support, y=whr.raw.2015$Happiness.Rank, method = 'spearman')
+cor.test(x=whr.raw.2015$Health..Life.Expectancy., y=whr.raw.2015$Happiness.Rank, method = 'spearman')
+cor.test(x=whr.raw.2015$Freedom, y=whr.raw.2015$Happiness.Rank, method = 'spearman')
+cor.test(x=whr.raw.2015$Trust..Government.Corruption., y=whr.raw.2015$Happiness.Rank, method = 'spearman')
+cor.test(x=whr.raw.2015$Generosity, y=whr.raw.2015$Happiness.Rank, method = 'spearman')
+```
+It appears that the rank is negatively correlated with the variables in 2015.
+In other words, higher measures of coefficient lowers the country's happiness rank.
+
+### Pairplot
+
+```{r}
+
+whr.all.num = whr.all[, -c(1,2,3, 11)]
+pairs(whr.all.num, pch=19, lower.panel=NULL)
+```
+
+
+The pairplot shows the general trend between each variables. Unfortunately, there 
+seems to be significant overplotting due to the number of countries involved. 
+We will have to used correlation plot instead.
+
+### Correlation Plot
+
+```{r}
+col <- colorRampPalette(c("#BB4444", "#EE9988", "#FFFFFF", "#77AADD", "#4477AA"))
+corrplot(cor(whr.all.num), col=col(200),  type="upper", 
+         addCoef.col = "black", tl.col="black", tl.srt=45, diag=FALSE )
+```
+
+
+The correlation plot shows the correlation between each variable with 1 illustrating
+strong positive correlation and -1 being strong negative correlation.
+
+It appears that average Happiness score is strongly correlated with GDP, Life expectancy, and Freedom, while generosity has a weaker relationship.
+
+It is interesting that the rank version and the average version shows comptely opposite stories.
+
+### Top 10 Countries for all average variables
+
+Lets take the average of the measures across the years and see which country is 
+the best in each category.
+```{r}
+top10 = whr.all %>% 
+  group_by(Country) %>%
+  summarise(avg_happy = mean(Happiness.Score), avg_gdp = mean(GDP.per.Capita),
+            avg_social = mean(Social.support), avg_life = mean(Health..Life.Expectancy.),
+            avg_free = mean(Freedom), avg_trust = mean(Trust..Government.Corruption.))
+
+```
+
+
+```{r}
+top10happy = ggplot(data.frame(top10[order(top10$avg_happy, decreasing = TRUE),][c(1:10),]),aes(x=reorder(as.factor(Country), -avg_happy), y=avg_happy)) + geom_point() + 
+  theme(axis.text.x = element_text(angle=45)) +
+    xlab("Country") +
+  ylab("Happiness") +
+  ggtitle("Top 10 Countries with highest average Happiness")
+```
+
+```{r}
+
+top10gdp = ggplot(data.frame(top10[order(top10$avg_happy, decreasing = TRUE),][c(1:10),]),aes(x=reorder(as.factor(Country), -avg_gdp), y=avg_gdp)) + geom_point() + 
+  theme(axis.text.x = element_text(angle=45)) +
+    xlab("Country") +
+  ylab("GDP Per Capita") +
+  ggtitle("Top 10 Countries with highest average GDP per Capita Countries")
+```
+
+
+```{r}
+top10life = ggplot(data.frame(top10[order(top10$avg_happy, decreasing = TRUE),][c(1:10),]),aes(x=reorder(as.factor(Country), -avg_life), y=avg_life)) + geom_point() + 
+  theme(axis.text.x = element_text(angle=45)) +
+  xlab("Country") +
+  ylab("Health Life Expectancy") +
+  ggtitle("Top 10 Countries with highest average Health Life Expectancy")
+```
+
+```{r}
+
+top10free = ggplot(data.frame(top10[order(top10$avg_happy, decreasing = TRUE),][c(1:10),]),aes(x=reorder(as.factor(Country), -avg_free), y=avg_free)) + geom_point() + 
+  theme(axis.text.x = element_text(angle=45)) +
+  xlab("Country") +
+  ylab("Freedom") +
+  ggtitle("Top 10 Countries with highest average Freedom")
+```
+
+```{r}
+
+top10trust = ggplot(data.frame(top10[order(top10$avg_happy, decreasing = TRUE),][c(1:10),]),aes(x=reorder(as.factor(Country), -avg_trust), y=avg_trust)) + geom_point() + 
+  theme(axis.text.x = element_text(angle=45)) +
+    xlab("Country") +
+  ylab("Trust for Government") +
+  ggtitle("Top 10 Countries with highest with highest average trust for government")
+```
+
+```{r}
+top10social = ggplot(data.frame(top10[order(top10$avg_happy, decreasing = TRUE),][c(1:10),]),aes(x=reorder(as.factor(Country), -avg_social), y=avg_social)) + geom_point() +
+  theme(axis.text.x = element_text(angle=45)) +
+    xlab("Country") +
+  ylab("Social Support") +
+  ggtitle("Top 10 Countries with highest average Social Support")
+```
+
+
+
+```{r}
+ggarrange(top10happy, top10gdp, top10life,
+          top10free, top10trust, top10social,
+          ncol = 1, nrow = 2)
+```
+
+
+Denmark, Sweden, and Norway are high up across all average measures, being in every top 10 graph.
+It seems like the Nordic countries have a secret to their happiness. Likewise for Australia and  
+New Zealand, the Oceania countries are right behind the Nordic countries in the average measures.
+
+### Happiness by Region
+```{r}
+regionhappy = whr.all %>% 
+  group_by(Region) %>%
+  summarise(avg_happy = mean(Happiness.Score))
+
+ggplot(regionhappy, aes(x=reorder(as.factor(Region), -avg_happy), y=avg_happy)) + geom_point() +
+  theme(axis.text.x = element_text(angle=45)) +
+    xlab("Country") +
+  ylab("Happiness") +
+  ggtitle(" Average Happiness by Region")
+
+```
+
+
+
+Obviously Australia and New Zealand have the highest happiness given only two countries
+were involved, pulling the average up. North America and Western Europe closely follow,
+while Sub-Saharan Africa has the lowest average by region. There seemed to be preliminary
+evidence against the Easterlin paradox.
+
+
+
+## Modeling
+
+To start off we will consider an ordinal logistic regression based on the rank.
+The choice of the model is due to the happiness score being a linear combination
+of the other measures - an automatic positive correlation. To mitigate this biased, 
+I will regress the happiness country each year to the other numeric variables. I will
+also run a linear regression on the average score on the other average measures
+
+
+```{r}
+whr.raw.2018$Trust..Government.Corruption. = as.numeric(whr.raw.2018$Trust..Government.Corruption.)
+
+olr.2015 = polr(as.factor(Happiness.Rank) ~ GDP.per.Capita + Social.support + Health..Life.Expectancy. + Freedom + Trust..Government.Corruption. + Generosity, data = whr.raw.2015, Hess=TRUE)
+
+olr.2016 = polr(as.factor(Happiness.Rank) ~ GDP.per.Capita + Social.support + Health..Life.Expectancy. + Freedom + Trust..Government.Corruption. + Generosity, data = whr.raw.2016, Hess=TRUE)
+
+olr.2017 = polr(as.factor(Happiness.Rank) ~ GDP.per.Capita + Social.support + Health..Life.Expectancy. + Freedom + Trust..Government.Corruption. + Generosity, data = whr.raw.2017, Hess=TRUE)
+
+olr.2018 = polr(as.factor(Happiness.Rank) ~ GDP.per.Capita + Social.support + Health..Life.Expectancy. + Freedom + Trust..Government.Corruption. + Generosity, data = whr.raw.2018, Hess=TRUE)
+
+olr.2019 = polr(as.factor(Happiness.Rank) ~ GDP.per.Capita + Social.support + Health..Life.Expectancy. + Freedom + Trust..Government.Corruption. + Generosity, data = whr.raw.2015, Hess=TRUE)
+
+
+stargazer(olr.2015, olr.2016, olr.2017, olr.2018, olr.2019, title="Happiness",
+          align = TRUE, dep.var.labels = "Happiness.Rank", type = "html")
+```
+
+Across all years, the rank is negatively correlated to all variables. In other words,
+a unit increase in the measure has an expected reduction of the <coefficient> unit of rank.
+This is perhaps a result of the ~150 countries involved in ranking relative to the small
+values in each average measure.
+
+
+```{r}
+
+
+lm.happy = lm(Happiness.Score ~  GDP.per.Capita + Social.support + Health..Life.Expectancy. + Freedom + Trust..Government.Corruption. + Generosity, data = whr.all.num)
+summary(lm.happy)
+
+```
+As seen from the average regression, GDP, Life Expectancy, and Freedom are indeed
+positively correlated with the average happiness score. 
+
+Overall, there is somewhat ambiguous evidence regarding the Easterlin paradox. However,
+it seems like GDP, Life Expectancy, and Freedom helps a country's happiness on an 
+aggregate level. For immigrants with a preference in happiness, the Nordic countries
+and Oceania is the optimal choice.
+
+## Refernece
+* Source of Data: https://www.kaggle.com/unsdsn/world-happiness
+* Spearman Correlation: https://www.kaggle.com/unsdsn/world-happiness
+* Ordinal Logistic Regression: https://stats.idre.ucla.edu/r/dae/ordinal-logistic-regression/
+
+
+
+
+
+
+
+
+
+

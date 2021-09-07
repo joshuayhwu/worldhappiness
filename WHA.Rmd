@@ -2,7 +2,7 @@
 title: "WorldHappinessAnaysis"
 author: "Yi Heng Joshua Wu"
 date: "5/6/2021"
-output: md_document
+output: rmarkdown::github_document
 ---
 
 In Economics, there is a theory called “Easterlin Paradox”. Where the country’s GDP growth doesn’t improve happiness in the long-run.

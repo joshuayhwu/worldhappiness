@@ -183,7 +183,7 @@ After we are done with the combined dataset, we can work on some visualizations!
 ## Exploratory Data Analysis
 
 
-## Spearman Rank Correlation
+### Spearman Rank Correlation
 
 Since the rank is an ordinal variable, we need to use Spearman's rank correlation
 the explore the crucial variables for our model. We will focus on 2015.
